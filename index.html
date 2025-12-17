@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handwritten Letter Simulator</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Homemade+Apple&family=Patrick+Hand&family=Reenie+Beanie&display=swap" rel="stylesheet">
+
+  <!-- html2canvas for image export -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f4f1ec;
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      gap: 2rem;
+    }
+
+    .editor {
+      width: 40%;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    textarea {
+      width: 100%;
+      height: 300px;
+      padding: 1rem;
+      font-size: 1rem;
+      resize: none;
+    }
+
+    select, button, input {
+      padding: 0.6rem;
+      font-size: 1rem;
+    }
+
+    .preview {
+      width: 60%;
+      background: #fffdf7;
+      padding: 3rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      line-height: 1.8;
+      font-size: 1.2rem;
+      overflow-y: auto;
+      transform: rotate(-0.3deg);
+    }
+
+    .paper {
+      background-image: linear-gradient(#eee 1px, transparent 1px);
+      background-size: 100% 2rem;
+    }
+
+    .ink-blue { color: #1a3d7c; }
+    .ink-black { color: #111; }
+    .ink-sepia { color: #5b4636; }
+
+    .view-only .editor {
+      display: none;
+    }
+
+    .view-only .preview {
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="editor" id="editor">
+    <h2>Write your letter</h2>
+    <textarea id="letterInput" placeholder="Dear..." oninput="renderLetter()"></textarea>
+
+    <label>Handwriting Style</label>
+    <select id="fontSelect" onchange="renderLetter()">
+      <option value="'Homemade Apple', cursive">Classic Cursive</option>
+      <option value="'Patrick Hand', cursive">Casual Hand</option>
+      <option value="'Reenie Beanie', cursive">Loose Scribble</option>
+    </select>
+
+    <label>Ink Color</label>
+    <select id="inkSelect" onchange="renderLetter()">
+      <option value="ink-blue">Blue Ink</option>
+      <option value="ink-black">Black Ink</option>
+      <option value="ink-sepia">Sepia Ink</option>
+    </select>
+
+    <button onclick="downloadImage()">Download as Image</button>
+    <button onclick="saveLetter()">Generate View-only Link</button>
+    <input id="shareLink" readonly placeholder="Shareable link will appear here" />
+  </div>
+
+  <div id="preview" class="preview paper ink-blue"></div>
+
+  <script>
+    /* ------------------ Rendering ------------------ */
+    function randomizeText(text) {
+      const normalized = text.replace(/\n{3,}/g, "\n\n");
+      const lines = normalized.split("\n");
+
+      return lines.map(line => {
+        if (line.trim() === "") return "";
+        return line.split("").map(char => {
+          if (char === " ") return " ";
+          const rotate = (Math.random() - 0.5) * 1.1;
+          return `<span style=\"display:inline-block; transform: rotate(${rotate}deg)\">${char}</span>`;
+        }).join("");
+      }).join("<br>");
+    }
+
+    function renderLetter(data) {
+      const preview = document.getElementById("preview");
+      const text = data?.text ?? document.getElementById("letterInput")?.value ?? "";
+      const font = data?.font ?? document.getElementById("fontSelect")?.value;
+      const ink = data?.ink ?? document.getElementById("inkSelect")?.value;
+
+      preview.style.fontFamily = font;
+      preview.className = `preview paper ${ink}`;
+      preview.innerHTML = randomizeText(text);
+    }
+
+    /* ------------------ Image Download ------------------ */
+    async function downloadImage() {
+      const preview = document.getElementById("preview");
+      const canvas = await html2canvas(preview, { backgroundColor: '#fffdf7', scale: 2 });
+      const link = document.createElement('a');
+      link.download = 'handwritten-letter.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    /* ------------------ Backend Integration ------------------ */
+    async function saveLetter() {
+      const payload = {
+        content: document.getElementById("letterInput").value,
+        font: document.getElementById("fontSelect").value,
+        ink: document.getElementById("inkSelect").value
+      };
+
+      const res = await fetch('/api/letters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const { id } = await res.json();
+      const url = `${location.origin}/?view=${id}`;
+      document.getElementById("shareLink").value = url;
+    }
+
+    async function loadViewOnly(id) {
+      document.body.classList.add('view-only');
+      const res = await fetch(`/api/letters/${id}`);
+      const data = await res.json();
+      renderLetter({ text: data.content, font: data.font, ink: data.ink });
+    }
+
+    /* ------------------ Init ------------------ */
+    (function init() {
+      const params = new URLSearchParams(location.search);
+      if (params.has('view')) {
+        loadViewOnly(params.get('view'));
+      } else {
+        renderLetter();
+      }
+    })();
+
+    /* ------------------ Sanity Tests ------------------ */
+    console.assert(typeof renderLetter === 'function');
+    console.assert(typeof randomizeText === 'function');
+    console.assert(typeof downloadImage === 'function');
+  </script>
+</body>
+</html>
